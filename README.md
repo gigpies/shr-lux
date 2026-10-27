@@ -1,6 +1,6 @@
 # SHR Lux
 
-**The lighting engine behind GigPies.** Build scenes around instrument activity
+**The lighting engine behind GigPies, with a terminal application (TUI) for previews.** Build scenes around instrument activity
 and musical changes, while keeping manual control through SHR Lightdesk.
 
 [**Try a show preview**](docs/USING.md) · [**Lighting desk**](https://github.com/gigpies/shr-lightdesk) · [Engineering](docs/ENGINEERING.md)
@@ -34,3 +34,5 @@ lights. For recorded music and optional pad previews, use the
 
 No project license has been selected. External recording terms are linked from
 the [simulation guide](docs/notes/0017-local-aux-simulation.md).
+
+[Contribute](https://github.com/gigpies/.github/blob/main/CONTRIBUTING.md) · [Report a bug](https://github.com/gigpies/shr-lux/issues/new/choose)
