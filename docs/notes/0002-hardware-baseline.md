@@ -33,4 +33,4 @@ Evidence commands: `lsusb`, `lsusb -t`, `lsusb -v -d 16c0:05dc`,
 Related: [USB access](0004-linux-usb-access.md), [uDMX protocol](0003-udmx-protocol.md),
 [fixture bench test](0011-fixture-bench-test.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

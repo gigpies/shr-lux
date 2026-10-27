@@ -12,4 +12,4 @@ Tags: #shr-lux
 
 ## Related
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

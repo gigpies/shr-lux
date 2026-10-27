@@ -140,4 +140,4 @@ research does not justify rerunning hardware or rebuilding the application.
 
 Related: [study map](0020-lighting-design-study.md), [implementation](0024-design-to-engine.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

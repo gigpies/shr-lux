@@ -58,4 +58,4 @@ mixer outputs; cable/termination arrangement; measured USB/DMX latency and outpu
 
 Related: [project map](0001-project-map.md), [original idea](../../idea.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

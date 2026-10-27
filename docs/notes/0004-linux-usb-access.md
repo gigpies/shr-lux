@@ -38,4 +38,4 @@ Do not run the full app as root to work around permanent permissions.
 Reference: [OLA device setup](https://www.openlighting.org/ola/getting-started/device-specific-configuration/).
 Related: [observed hardware](0002-hardware-baseline.md), [bench procedure](0011-fixture-bench-test.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

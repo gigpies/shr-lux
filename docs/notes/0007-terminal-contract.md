@@ -32,4 +32,4 @@ References: [Ratatui](https://docs.rs/ratatui/0.30.2/ratatui/),
 [Crossterm](https://docs.rs/crossterm/0.29.0/crossterm/).
 Related: [architecture](0005-architecture.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

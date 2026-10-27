@@ -189,4 +189,4 @@ were intentionally not run. Nothing was published or redistributed.
 Related: [audio design](0008-audio-and-musical-state.md),
 [music research](0015-musical-direction.md), [Pi 1 plan](0014-pi1-feasibility.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

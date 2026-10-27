@@ -4,7 +4,7 @@ Date: 2026-10-04. Task 0008 / LX-02. **Implemented; offline validated; final han
 acceptance**. This engine is separate from the recorded-audio simulation, terminal
 preview and MIDI pad output. It neither imports a surface simulator nor opens
 hardware. [Integration plan](0027-gigpies-implementation.md) and
-[C-LIGHT:1](../../../gigpies/docs/MODULE_CONTRACTS.md) own the integration scope.
+[C-LIGHT:1](../../../gigpies/docs/reference/MODULE_CONTRACTS.md) own the integration scope.
 
 ## Manual use without analysis or MIDI
 
@@ -83,4 +83,4 @@ Historical auditions, exhaustive research matrices, long benchmarks and physical
 fixture/load tests are outside this offline change. Hardware and persistence
 claims retain their original limits.
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

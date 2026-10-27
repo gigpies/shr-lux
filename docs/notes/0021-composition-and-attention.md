@@ -120,4 +120,4 @@ Do not add moving-head control merely to compensate for a missing composition.
 Related: [study map](0020-lighting-design-study.md), [color](0022-color-and-fixtures.md),
 [engine proposals](0024-design-to-engine.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

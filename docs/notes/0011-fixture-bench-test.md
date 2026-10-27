@@ -26,4 +26,4 @@ engine must specify how the operator resumes after output loss.
 
 Related: [hardware baseline](0002-hardware-baseline.md), [DMX patching](0006-dmx-fixtures.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

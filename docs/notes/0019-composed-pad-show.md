@@ -109,7 +109,7 @@ proof that the show looks good. Media preparation and onset thresholds are uncha
 Related: [analysis and original hardware evidence](0018-analysis-and-pad-preview.md),
 [show policy](0016-show-policy-validation.md), [validation](0012-development-and-validation.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)
 
 ## Manual irregular-white audition
 

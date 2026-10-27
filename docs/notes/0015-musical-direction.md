@@ -168,4 +168,4 @@ static wash and simple per-hit accents. No research sweep belongs in normal test
 Related: [Pi 1 feasibility](0014-pi1-feasibility.md),
 [policy and validation](0016-show-policy-validation.md), [audio](0008-audio-and-musical-state.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

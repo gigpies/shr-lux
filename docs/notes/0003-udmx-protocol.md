@@ -58,4 +58,4 @@ has no chosen distribution license yet.
 
 Related: [DMX fundamentals](0006-dmx-fixtures.md), [hardware](0002-hardware-baseline.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

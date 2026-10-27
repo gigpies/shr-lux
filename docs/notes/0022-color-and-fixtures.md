@@ -159,4 +159,4 @@ for color rendering. Both are necessary learning tools, neither replaces the oth
 Related: [composition](0021-composition-and-attention.md),
 [implementation priorities](0024-design-to-engine.md), [sources](0026-lighting-study-sources.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

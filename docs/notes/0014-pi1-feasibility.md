@@ -112,4 +112,4 @@ newer hardware using the same feature and show-policy boundaries.
 Related: [music and programs](0015-musical-direction.md),
 [implementation evidence](0016-show-policy-validation.md), [architecture](0005-architecture.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

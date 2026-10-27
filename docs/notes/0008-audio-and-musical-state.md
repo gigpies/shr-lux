@@ -49,4 +49,4 @@ comparisons should be opt-in with recorded results.
 
 Related: [architecture](0005-architecture.md), [validation](0012-development-and-validation.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

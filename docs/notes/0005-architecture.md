@@ -52,4 +52,4 @@ Do not write transient automatic state back into user configuration on every bea
 Related: [musical analysis](0008-audio-and-musical-state.md), [MIDI](0009-midi-feedback.md),
 [TUI](0007-terminal-contract.md), [roadmap](0010-roadmap.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

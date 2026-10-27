@@ -184,4 +184,4 @@ USB capture stability and memory still need target-device measurements.
 Related: [audio estimates](0008-audio-and-musical-state.md),
 [MIDI](0009-midi-feedback.md), [development checks](0012-development-and-validation.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

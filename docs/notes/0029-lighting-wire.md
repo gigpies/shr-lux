@@ -124,7 +124,7 @@ replay/eviction/reorder/first-ID, expiry/retired history exhaustion, coherent pa
 deadline and maximum-state atomicity, private framed fragmentation/oversize/
 stalled input/reconnect/cleanup. Physical/historical/exhaustive/load tests excluded.
 
-[Notebook](../index.md) · [Owning plan](0027-gigpies-implementation.md)
+[Notebook](../reference/NOTEBOOK.md) · [Owning plan](0027-gigpies-implementation.md)
 
 LX03 measured validation: focused 8 passed; full normal suite 69 passed; warning-denied all-target Clippy passed. Release and post-release PTY completing in the private checkpoint evidence. No ignored normal tests.
 

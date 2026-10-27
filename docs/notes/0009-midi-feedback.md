@@ -23,4 +23,4 @@ MIDI input actions and takeover remain proposals; no input mapping is implemente
 
 Related: [architecture](0005-architecture.md), [roadmap](0010-roadmap.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

@@ -60,4 +60,4 @@ auditions and physical MIDI/DMX tests were intentionally skipped. This checkpoin
 preserves the existing simulation, pad-preview and research work; it adds no
 hardware acceptance claim.
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

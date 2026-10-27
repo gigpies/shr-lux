@@ -123,4 +123,4 @@ not the application. The original `idea.md` remains unchanged.
 Related: [original musical research](0015-musical-direction.md),
 [current show](0019-composed-pad-show.md), [Pi 1 target](0014-pi1-feasibility.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

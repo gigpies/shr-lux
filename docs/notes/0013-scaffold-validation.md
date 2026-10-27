@@ -25,7 +25,7 @@ There are no historical or exhaustive tests in the scaffold.
 The PTY suite cannot confirm graphical clipboard or Ctrl+click behavior in the user's
 local Konsole. That remains an interactive check; the app emits no mouse capture commands.
 
-[Development commands](0012-development-and-validation.md) · [Notebook index](../index.md)
+[Development commands](0012-development-and-validation.md) · [Notebook index](../reference/NOTEBOOK.md)
 
 GitHub repository creation succeeded as PRIVATE. Uploading an active workflow was
 rejected because the OAuth token lacks workflow scope; CI is retained as an inactive
@@ -39,7 +39,7 @@ The initial upload failure above is retained as historical evidence.
 
 First remote CI run passed for commit `ea2c7cb`: formatting, Clippy, all five Rust
 tests, optimized build and all three PTY exit/recovery checks.
-[GitHub Actions evidence](https://github.com/PaolaShultz/shr-lux/actions/runs/36486029648).
+[GitHub Actions evidence](https://github.com/gigpies/shr-lux/actions/runs/36486029648).
 The same normal suite passed locally before pushing. Physical tests remain pending;
 no historical/exhaustive suite exists. GitHub reported a checkout@v4 Node runtime
 deprecation warning; it did not fail the run.

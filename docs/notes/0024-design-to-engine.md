@@ -179,4 +179,4 @@ CPU, resident memory, capture overruns, update latency and shutdown on the actua
 Related: [study](0020-lighting-design-study.md), [color](0022-color-and-fixtures.md),
 [timing](0023-musical-time-and-motion.md), [auditions](0025-design-audition-lab.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

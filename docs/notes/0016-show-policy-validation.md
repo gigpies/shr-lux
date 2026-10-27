@@ -91,4 +91,4 @@ DMX operation or musical detection accuracy.
 Related: [feasibility](0014-pi1-feasibility.md), [musical research](0015-musical-direction.md),
 [normal checks](0012-development-and-validation.md), [roadmap](0010-roadmap.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

@@ -37,4 +37,4 @@ Our dongle's isolation and electrical quality have not been established.
 These notes are implementation guidance, not a claim of standards compliance.
 Related: [uDMX](0003-udmx-protocol.md), [bench test](0011-fixture-bench-test.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

@@ -141,4 +141,4 @@ aggressive texture, which the pad demo can help us develop.
 Related: [study](0020-lighting-design-study.md), [design specification](0024-design-to-engine.md),
 [audition plan](0025-design-audition-lab.md).
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

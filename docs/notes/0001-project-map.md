@@ -26,4 +26,4 @@ Unknown measurements remain unavailable in the UI; no simulated BPM or energy is
 - [Hardware evidence](0002-hardware-baseline.md)
 - [Terminal behavior](0007-terminal-contract.md)
 
-[Notebook index](../index.md)
+[Notebook index](../reference/NOTEBOOK.md)

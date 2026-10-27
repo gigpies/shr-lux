@@ -232,4 +232,4 @@ with their music, and test the specific alternatives in the [audition plan](0025
 Further reading should answer a question exposed by those trials, rather than
 become a growing folder of unexamined links.
 
-[Study map](0020-lighting-design-study.md) · [Notebook index](../index.md)
+[Study map](0020-lighting-design-study.md) · [Notebook index](../reference/NOTEBOOK.md)
