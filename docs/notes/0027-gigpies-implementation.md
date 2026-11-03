@@ -76,7 +76,18 @@ passes so the Pis can fast-forward it after their test reservation. Do not chang
 shared protocol versions or activate a device to make the task appear complete.
 Report exact commit, commands/results and the remaining adapter/physical gates.
 
+Validation follow-up from source synchronization: the 2026-11-03 parallel normal
+suite observed `WouldBlock` when reopening the checkpoint owner lock in
+`configured_service::locked_config_identity_and_checkpoint_recovery_preserve_show_holds_without_rearm`
+(line 199). The isolated case passed. Investigate the lifetime of locks on refused
+startup paths alongside concurrent CLI spawning before claiming parallel-suite
+reliability; the cause is not yet established. The complete serial all-target
+suite passed 148 tests, with one opt-in ignored, using `-- --test-threads=1`.
+No assertion, deadline or runtime source was changed. Preserve exclusive ownership and
+the refusal assertions. Record this separately from the new output worker.
+
 Acceptance checklist:
+
 - [ ] Bounded authority/worker boundary and explicit lifecycle implemented.
 - [ ] Deterministic output/fault/recovery/race tests pass without devices.
 - [ ] Default null-disarmed behavior and existing wire contract preserved.
