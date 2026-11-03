@@ -25,3 +25,5 @@ pub mod service_config;
 pub mod musical;
 
 pub mod scenes;
+
+pub mod output;

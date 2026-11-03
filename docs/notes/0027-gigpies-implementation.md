@@ -21,19 +21,21 @@ records its validation. Beat/downbeat and physical light remain unavailable.
 State: PLANNED; physical acceptance requires a separate authorized session and known
 fixture/adapter/patch facts. Owner: SHR Lux. Outcome: one bounded output worker with
 explicit arm/rearm, exact fixture encoding and visible submission/fault state.
-Next: establish the real profile and loss/blackout/recovery policy, then prepare
-software contracts/tests before any output. Do not invent fixture maps, movement
-limits or generic all-zero safety. `src/dmx.rs` currently encodes ranges, not USB writes.
+Next: establish the real profile and fixture-specific loss/blackout/recovery policy,
+then implement and qualify the adapter in a separately authorized session. Do not
+invent fixture maps, movement limits or generic all-zero safety. `src/dmx.rs` currently encodes ranges, not USB writes.
 Acceptance: encoding/worker bounds, unknown versus submitted versus observed output,
 fault/restart/rearm and fixture-specific physical checks. No automatic rearming.
-Progress/evidence: no physical output implementation or qualification.
+Progress/evidence: the dev-PC worker below implements the software boundary only;
+no physical output implementation or qualification.
 
 ### Dev-PC package — bounded software output worker
 
 Selected 2026-11-03 to run independently of the two-Pi audio transport work.
-State: ready for implementation; no worker has been launched. Own SHR Lux only,
-starting from the synchronized `main` after a fast-forward pull. Record that exact
-base commit before editing. GigPies, Desk, Lightdesk, PA, FX and REC are read-only.
+State: software-complete and offline-validated. Own SHR Lux only,
+starting from the synchronized `main` after a fast-forward pull. Implementation
+base: `e0f50404eac688ffc2c12b7dfc19ce287a31c546`. GigPies, Desk, Lightdesk, PA, FX
+and REC are read-only.
 Keep this card as the sole plan/status owner; do not create another handoff forest.
 
 Implement the device-independent part of LX-06 with an explicitly injected fake
@@ -97,15 +99,47 @@ configured-service target 8/8; full normal parallel all-target suite 149 passed,
 0 failed, 1 opt-in ignored. Formatting, warnings-denied all-target Clippy, six
 synthetic preparation tests, release build and all eight Linux PTY checks passed.
 Historical/exhaustive and physical tests were intentionally skipped. This repair
-is complete; the dev-PC output-worker package remains ready and unimplemented.
+is complete and independent of the dev-PC output-worker package.
 
 Acceptance checklist:
 
-- [ ] Bounded authority/worker boundary and explicit lifecycle implemented.
-- [ ] Deterministic output/fault/recovery/race tests pass without devices.
-- [ ] Default null-disarmed behavior and existing wire contract preserved.
-- [ ] Required normal validation and publication checks pass.
-- [ ] Software completion and remaining physical limitations documented.
+- [x] Bounded authority/worker boundary and explicit lifecycle implemented.
+- [x] Deterministic output/fault/recovery/race tests pass without devices.
+- [x] Default null-disarmed behavior and existing wire contract preserved.
+- [x] Required normal validation and publication checks pass.
+- [x] Software completion and remaining physical limitations documented.
+
+### Dev-PC completion evidence — 2026-11-03
+
+Implemented `src/output.rs` with direct real-authority capture, synthetic frame
+encoding, one latest pending frame and one owned sink worker. Explicit safe-policy
+arming, disarm, stale-source fault, failed/late completion, recovery/rearm and joined
+shutdown are bounded as described in the [output contract](0036-output-worker.md).
+No physical backend, wire schema change or default-service activation was added.
+
+Eight fake-sink integration tests and three deterministic core tests cover the new
+boundary. The complete `sh scripts/check.sh` passed with Rust 1.97.1 and the committed
+lockfile: formatting; all-target Clippy with `-D warnings`; all-target normal tests
+**160 passed, 0 failed, 1 opt-in ignored**; six synthetic preparation tests; release
+build; eight Linux PTY checks. Commands ran serially with `CARGO_INCREMENTAL=0`,
+`CARGO_BUILD_JOBS=1`, nice 15, idle I/O priority and the shared
+`/home/shome/p/.gigpies-build.lock`. Focused commands were
+`cargo test --locked output` and `cargo test --locked --test output`.
+The initial Clippy nested-if finding was fixed before the complete successful run.
+
+Publication review covers the complete index for private/generated paths, media,
+archives and credential markers, plus the named staged source/documentation diff
+and whitespace checks. Lux has no versioned publication-policy script/hooks; no
+scripts, binary assets, private state or generated evidence are added by this change.
+Historical/exhaustive timing/load campaigns, private-media auditions, downloads and
+all physical tests remain intentionally excluded. All work stayed in SHR Lux; the
+external knowledge notebook remains unchanged under this task's repository-only scope.
+
+Next: after the Pis' independent reservation, they may fast-forward the published
+source. Actual adapter/profile mapping, device deadlines/refresh/cancellation,
+fixture-specific safe output, electrical/wiring and observed-light acceptance remain
+separate authorized gates. A sink success proves submission only, and an arbitrary
+blocked backend cannot safely be killed to manufacture a shutdown guarantee.
 
 ## Later engine expansion
 

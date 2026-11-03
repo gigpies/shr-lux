@@ -6,6 +6,7 @@ Implementation details, integration, measured evidence and development tasks.
 
 ## Service setup and interfaces
 
+- [Device-independent output worker](notes/0036-output-worker.md)
 - [Real private Lux provider integration](notes/0031-local-provider-integration.md)
 - [Configured synthetic authority and named analysis](notes/0033-configured-analysis.md)
 - [Bounded harmonic and arrangement estimates](notes/0034-musical-analysis.md)
