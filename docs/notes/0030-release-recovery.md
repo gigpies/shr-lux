@@ -63,6 +63,12 @@ Implemented/offline-validated; final root artifact review pending. Explicit CLI 
 selects lx04-durable-v1 and reserves a new epoch durably before binding. Files in
 already verified private0700 directory: lighting-owner.lock (exclusive nonblocking
 lifetime lock), lighting-epoch.json (strict reserved epoch), lighting-checkpoint.json.
+The acquired owner lock has its own lifetime guard before startup validation.
+Both refused initialization and normal shutdown explicitly unlock it, even if a
+concurrent fork temporarily retains a descriptor until exec. Closing only the
+parent descriptor is insufficient in that case. Failed acquisition never creates
+the guard and cannot release another owner's lock. Refusals still preserve the
+stored identity, checkpoint and epoch; a later valid startup reserves a fresh epoch.
 Every existing file must be regular, sameeffectiveUID and0600, O_NOFOLLOW; no
 symlink or unowned replacement. Missing/corrupt registry after prior ownership
 refuses; it is never reset to1. Two crashes with no new checkpoint still reserve

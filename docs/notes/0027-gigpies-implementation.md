@@ -76,15 +76,28 @@ passes so the Pis can fast-forward it after their test reservation. Do not chang
 shared protocol versions or activate a device to make the task appear complete.
 Report exact commit, commands/results and the remaining adapter/physical gates.
 
-Validation follow-up from source synchronization: the 2026-11-03 parallel normal
-suite observed `WouldBlock` when reopening the checkpoint owner lock in
-`configured_service::locked_config_identity_and_checkpoint_recovery_preserve_show_holds_without_rearm`
-(line 199). The isolated case passed. Investigate the lifetime of locks on refused
-startup paths alongside concurrent CLI spawning before claiming parallel-suite
-reliability; the cause is not yet established. The complete serial all-target
-suite passed 148 tests, with one opt-in ignored, using `-- --test-threads=1`.
-No assertion, deadline or runtime source was changed. Preserve exclusive ownership and
-the refusal assertions. Record this separately from the new output worker.
+The synchronization lock regression is handled separately from this output-worker
+package. The 2026-11-03 parallel run originally refused checkpoint reopening with
+`WouldBlock` at tests/configured_service.rs:199; isolated and serial runs passed.
+Investigation reproduced the refusal deterministically by keeping a duplicated
+open-file description alive through the actual rejected legacy-startup path.
+The prior explicit unlock existed only on a fully constructed CheckpointStore,
+so an initialization error could leave its flock held by a descriptor inherited
+during concurrent process creation until that child closed it or executed.
+
+The acquired lock now owns an immediate RAII guard, covering all initialization
+errors and normal store destruction. Failed acquisition never constructs the
+guard. The regression failed before the fix and passed afterward, checks refused
+startup leaves identity/epoch files unchanged, permits immediate fresh recovery,
+and verifies the new owner's exclusion survives dropping the old duplicate.
+No retry, sleep, deadline or assertion was loosened. See the
+[recovery contract](0030-release-recovery.md#lx04b-private-durability).
+Validation: deterministic regression red before the fix, green afterward;
+configured-service target 8/8; full normal parallel all-target suite 149 passed,
+0 failed, 1 opt-in ignored. Formatting, warnings-denied all-target Clippy, six
+synthetic preparation tests, release build and all eight Linux PTY checks passed.
+Historical/exhaustive and physical tests were intentionally skipped. This repair
+is complete; the dev-PC output-worker package remains ready and unimplemented.
 
 Acceptance checklist:
 

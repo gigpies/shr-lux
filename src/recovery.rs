@@ -133,7 +133,7 @@ pub struct CheckpointStore {
     show: String,
     epoch: u64,
     configured_patch: Option<PatchSpec>,
-    _lock: File,
+    _lock: OwnerLock,
 }
 impl CheckpointStore {
     pub fn open(directory: &Path, show: &str) -> io::Result<Self> {
@@ -167,6 +167,15 @@ impl CheckpointStore {
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
             return Err(io::Error::last_os_error());
         }
+        Self::open_locked(directory, show, config, had_lock, OwnerLock(lock))
+    }
+    fn open_locked(
+        directory: &Path,
+        show: &str,
+        config: Option<&crate::service_config::ServiceConfig>,
+        had_lock: bool,
+        lock: OwnerLock,
+    ) -> io::Result<Self> {
         // Startup identity is checked under the same retained lock, before epoch
         // reservation. Legacy callers cannot silently enter configured storage.
         let identity_exists = fs::symlink_metadata(directory.join(CONFIG)).is_ok();
@@ -404,10 +413,92 @@ fn atomic_replace(directory: &Path, name: &str, bytes: &[u8], fault: WriteFault)
     result
 }
 
-impl Drop for CheckpointStore {
+// Construct only after successful acquisition, before any fallible startup work.
+// Closing alone can retain flock ownership in a fork-inherited descriptor.
+struct OwnerLock(File);
+impl Drop for OwnerLock {
     fn drop(&mut self) {
         // SAFETY: valid retained descriptor. Explicit unlock also ends ownership
-        // if another test thread briefly forked with a CLOEXEC descriptor copy.
-        let _ = unsafe { libc::flock(self._lock.as_raw_fd(), libc::LOCK_UN) };
+        // if another thread briefly forked with a CLOEXEC descriptor copy.
+        let _ = unsafe { libc::flock(self.0.as_raw_fd(), libc::LOCK_UN) };
+    }
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+    use crate::fixture::{FixtureSpec, SyntheticMode};
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn refused_startup_unlocks_even_with_an_inherited_descriptor() {
+        let directory =
+            std::env::temp_dir().join(format!("lux-lock-refusal-{}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                fs::remove_dir_all(&self.0).unwrap();
+            }
+        }
+        let _cleanup = Cleanup(directory.clone());
+        let config = crate::service_config::ServiceConfig {
+            version: 1,
+            show_id: "11111111-1111-4111-8111-111111111111".into(),
+            patch: PatchSpec {
+                version: 1,
+                patch_revision: 1,
+                fixtures: vec![FixtureSpec::synthetic(
+                    Id::new("front").unwrap(),
+                    "Front",
+                    SyntheticMode::Dimmer,
+                    1,
+                )],
+            },
+            analysis: None,
+        };
+        drop(CheckpointStore::open_configured(&directory, &config).unwrap());
+        let before = [CONFIG, EPOCH].map(|name| fs::read(directory.join(name)).unwrap());
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(directory.join("lighting-owner.lock"))
+            .unwrap();
+        // SAFETY: live descriptor. Retain the same open-file description that a
+        // concurrent fork would inherit until exec, without forking the test harness.
+        assert_eq!(
+            unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+            0
+        );
+        let inherited = lock.try_clone().unwrap();
+        // Exercise the real refused legacy-startup path after lock acquisition.
+        let error =
+            CheckpointStore::open_locked(&directory, &config.show_id, None, true, OwnerLock(lock))
+                .err()
+                .unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            [CONFIG, EPOCH].map(|name| fs::read(directory.join(name)).unwrap()),
+            before
+        );
+        let recovered = CheckpointStore::open_configured(&directory, &config).unwrap();
+        assert_eq!(recovered.epoch(), 2);
+        drop(inherited);
+        // Dropping the old duplicate must not release the new owner's lock.
+        assert_eq!(
+            CheckpointStore::open_configured(&directory, &config)
+                .err()
+                .unwrap()
+                .kind(),
+            io::ErrorKind::WouldBlock
+        );
+        drop(recovered);
+        assert_eq!(
+            CheckpointStore::open_configured(&directory, &config)
+                .unwrap()
+                .epoch(),
+            3
+        );
     }
 }
