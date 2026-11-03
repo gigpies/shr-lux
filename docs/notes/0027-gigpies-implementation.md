@@ -28,6 +28,61 @@ Acceptance: encoding/worker bounds, unknown versus submitted versus observed out
 fault/restart/rearm and fixture-specific physical checks. No automatic rearming.
 Progress/evidence: no physical output implementation or qualification.
 
+### Dev-PC package — bounded software output worker
+
+Selected 2026-11-03 to run independently of the two-Pi audio transport work.
+State: ready for implementation; no worker has been launched. Own SHR Lux only,
+starting from the synchronized `main` after a fast-forward pull. Record that exact
+base commit before editing. GigPies, Desk, Lightdesk, PA, FX and REC are read-only.
+Keep this card as the sole plan/status owner; do not create another handoff forest.
+
+Implement the device-independent part of LX-06 with an explicitly injected fake
+sink. Real USB/DMX access, fixture profiles, wiring, timing qualification and
+service deployment remain deferred. This is useful before adapter facts are known:
+it establishes the ownership and failure behavior a future adapter must satisfy.
+
+1. Inspect existing authority, fixture/patch validation, null sink and restart
+   contracts. Specify a small internal boundary carrying validated encoded frames,
+   show/epoch/patch identity and submission generation. Keep C-LIGHT wire snapshots
+   and default null-disarmed service behavior compatible; no sibling changes.
+2. Implement one bounded latest-frame mailbox and one owned output worker. I/O
+   cannot hold the authority lock or block command processing. A slow sink must not
+   create an unbounded queue; stale generations must not submit after reconfiguration.
+   Bound request size, update rate, pending state, retry policy and shutdown.
+3. Define explicit arm/disarm/rearm, stale-source and fault transitions. Restart
+   remains disarmed. Transport success is submission only, never observed physical
+   output. A failed/timed-out sink requires explicit recovery; never auto-rearm.
+   Fixture-specific safe output must be supplied explicitly; missing policy refuses
+   arming. Never assume all-zero DMX is a safe movement/blackout command.
+4. Use deterministic fake sinks and synthetic patch fixtures for success, refusal,
+   timeout, delayed completion, latest-state replacement, identity/epoch changes,
+   disarm races and shutdown. State the maximum in-flight submission semantics:
+   cancellation cannot undo bytes already submitted. A backend must implement a
+   bounded operation; do not claim an arbitrary blocked thread can be killed safely.
+5. Exercise the real authority-to-worker software boundary with synthetic intent,
+   preserving manual Hold, blackout intensity semantics and unrelated attributes.
+   Distinguish desired, submitted, failed and unknown observations. Reuse existing
+   encoding where applicable, without inventing a physical fixture channel map.
+6. Run focused production tests while implementing, then the complete normal
+   all-target suite, formatting, warnings-denied Clippy, release build and Linux
+   PTY checks required by AGENTS.md. Use the pinned toolchain, committed lockfile,
+   normal target directory and CARGO_INCREMENTAL=0; coordinate the local build lock.
+   Hardware, exhaustive timing/load campaigns and media downloads stay excluded.
+
+Completion: tested worker and internal integration, concise contract/limits in the
+owning reference, updated checklist/evidence here, clean reviewed source commit
+and publication-policy checks. Push the scoped SHR Lux commit when validation
+passes so the Pis can fast-forward it after their test reservation. Do not change
+shared protocol versions or activate a device to make the task appear complete.
+Report exact commit, commands/results and the remaining adapter/physical gates.
+
+Acceptance checklist:
+- [ ] Bounded authority/worker boundary and explicit lifecycle implemented.
+- [ ] Deterministic output/fault/recovery/race tests pass without devices.
+- [ ] Default null-disarmed behavior and existing wire contract preserved.
+- [ ] Required normal validation and publication checks pass.
+- [ ] Software completion and remaining physical limitations documented.
+
 ## Later engine expansion
 
 Cue-list/fade/effect/movement and venue patch authoring need explicit scope and one
