@@ -273,11 +273,17 @@ fn processing_and_reset_allocate_nothing_after_construction() {
             * 0.2;
         [0.0, x, x, -x]
     });
+    let mut seven =
+        shr_lux::musical::SourceMusicalAnalyzer::<7>::with_weights([0., 0.35, 1., 1., 1., 1., 1.])
+            .unwrap();
+    let seven_frames = frames.map(|f| [f[0], f[1], f[2], f[3], f[2], f[2], f[2]]);
     ALLOCATION_COUNT.with(|count| count.set(Some(0)));
     for block in 0..1500 {
         a.process(&frames, block * 480);
+        seven.process(&seven_frames, block * 480);
     }
     a.reset();
+    seven.reset();
     a.process(&frames, 720000);
     let count = ALLOCATION_COUNT.with(|count| count.replace(None).unwrap());
     assert_eq!(count, 0);
@@ -370,4 +376,38 @@ fn adc_clipping_erases_key_history_and_clean_audio_rewarms() {
         a.process(&high, cursor).ready,
         "subthreshold signal accepted"
     );
+}
+
+#[test]
+fn repeated_transitions_predict_only_with_observed_support_and_clear_on_gap() {
+    let mut a = MusicalAnalyzer::new();
+    let mut cursor = 0;
+    let c = [60., 64., 67.];
+    let g = [67., 71., 74.];
+    feed(&mut a, &mut cursor, 0.8, &c, 0.4, false);
+    assert!(a.snapshot().prediction.is_none());
+    for _ in 0..4 {
+        feed(&mut a, &mut cursor, 0.8, &g, 0.4, false);
+        feed(&mut a, &mut cursor, 0.8, &c, 0.4, false);
+    }
+    let next = a.snapshot().prediction.expect("repeated C to G");
+    assert_eq!(next.root, 7);
+    assert!(next.confidence >= 0.75);
+    cursor += 480;
+    feed(&mut a, &mut cursor, 0.8, &c, 0.4, false);
+    assert!(a.snapshot().prediction.is_none());
+}
+
+#[test]
+fn novel_third_arrangement_after_recurrence_is_only_a_bridge_candidate() {
+    let mut a = MusicalAnalyzer::new();
+    let mut cursor = 0;
+    for _ in 0..3 {
+        feed(&mut a, &mut cursor, 9., &[60., 64., 67.], 0.12, false);
+        feed(&mut a, &mut cursor, 9., &[60., 64., 67.], 0.6, true);
+    }
+    let s = feed(&mut a, &mut cursor, 10., &[62., 65., 69.], 0.3, false);
+    let section = s.section.unwrap();
+    assert_eq!(section.label, SectionLabel::BridgeCandidate);
+    assert!(section.confidence <= 0.35);
 }

@@ -154,13 +154,22 @@ impl Snapshot {
     /// Durable owner wire schema allows honest checkpoint/error status; static LX03
     /// validation continues refusing unbacked nonvolatile claims.
     pub fn validate_for_schema(&self, patch: &Patch, schema: &str) -> Result<(), Error> {
-        if matches!(schema, "lx06-scenes-v1" | "lx06-scenes-v2") {
+        if matches!(
+            schema,
+            "lx06-scenes-v1" | "lx06-scenes-v3" | "lx06-scenes-v2" | "lx06-scenes-v4"
+        ) {
             let mut logical = self.clone();
             logical.durability = Durability::Volatile;
             logical.validate_inner(patch, true, true)
         } else if matches!(
             schema,
-            "lx05-v1" | "lx05-v2" | "lx05-music-v1" | "lx05-music-v2"
+            "lx05-v1"
+                | "lx05-v2"
+                | "lx05-v3"
+                | "lx05-music-v1"
+                | "lx05-music-v3"
+                | "lx05-music-v2"
+                | "lx05-music-v4"
         ) {
             let mut logical = self.clone();
             logical.durability = Durability::Volatile;

@@ -27,3 +27,5 @@ pub mod musical;
 pub mod scenes;
 
 pub mod output;
+
+pub mod expression;

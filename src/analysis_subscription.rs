@@ -16,6 +16,8 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 pub const PAYLOAD: usize = 6280;
+pub const MAX_SOURCES: usize = 8;
+pub const MAX_PAYLOAD: usize = 12040;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Descriptor {
@@ -26,8 +28,8 @@ pub struct Descriptor {
     pub stream: u32,
     pub sample_rate: u32,
     pub first_frame: String,
-    pub sources: [String; 4],
-    pub inputs: [String; 4],
+    pub sources: Vec<String>,
+    pub inputs: Vec<String>,
     pub tap: String,
     pub map_revision: String,
     pub calibration_revision: String,
@@ -38,11 +40,25 @@ pub struct Descriptor {
 #[serde(deny_unknown_fields)]
 pub struct Binding {
     pub version: u32,
-    pub inputs: [String; 4],
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<String>,
+    pub inputs: Vec<String>,
 }
 impl Binding {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.version != 2 {
+        if !matches!(self.version, 2 | 3)
+            || !(4..=MAX_SOURCES).contains(&self.inputs.len())
+            || (self.version == 2 && (self.inputs.len() != 4 || !self.sources.is_empty()))
+            || (self.version == 3
+                && (self.sources.len() != self.inputs.len()
+                    || self.sources[..4] != ["kick", "bass", "guitar-1", "guitar-2"]
+                    || self.sources.iter().enumerate().any(|(i, s)| {
+                        s.is_empty()
+                            || s.len() > 32
+                            || !s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                            || self.sources[..i].contains(s)
+                    })))
+        {
             return Err("analysis binding version");
         }
         for (i, id) in self.inputs.iter().enumerate() {
@@ -68,15 +84,19 @@ impl Descriptor {
     }
     fn decode_expected(bytes: &[u8], binding: Option<&Binding>) -> Result<Self, &'static str> {
         let d: Self = serde_json::from_value(strict_json(bytes)?).map_err(|_| "descriptor")?;
-        let version = if binding.is_some() { 2 } else { 1 };
-        let subscription = if binding.is_some() {
+        let version = binding.map_or(1, |b| b.version);
+        let subscription = if version == 3 {
+            "lux.aux.v3"
+        } else if binding.is_some() {
             "lux.aux.v2"
         } else {
             "lux.aux.v1"
         };
-        let inputs = binding
-            .map(|b| b.inputs.clone())
-            .unwrap_or_else(|| ["input-01", "input-02", "input-03", "input-04"].map(String::from));
+        let inputs = binding.map(|b| b.inputs.clone()).unwrap_or_else(|| {
+            ["input-01", "input-02", "input-03", "input-04"]
+                .map(String::from)
+                .to_vec()
+        });
         if d.contract != "C-ANALYSIS"
             || d.version != version
             || d.subscription != subscription
@@ -84,7 +104,15 @@ impl Descriptor {
             || d.sample_rate != 48000
             || d.tap != "raw-pre-fader"
             || d.clock != "linux-clock-monotonic-ms"
-            || d.sources != ["kick", "bass", "guitar-1", "guitar-2"]
+            || d.sources
+                != binding
+                    .filter(|b| b.version == 3)
+                    .map(|b| b.sources.clone())
+                    .unwrap_or_else(|| {
+                        ["kick", "bass", "guitar-1", "guitar-2"]
+                            .map(String::from)
+                            .to_vec()
+                    })
             || d.inputs != inputs
         {
             return Err("descriptor_identity");
@@ -119,9 +147,15 @@ pub struct Window {
     pub oldest_ms: u64,
     pub losses: u64,
     pub pcm: [AuxFrame; WINDOW],
+    pub all_pcm: [[f32; MAX_SOURCES]; WINDOW],
 }
 pub fn decode_window(d: &Descriptor, b: &[u8], now_ms: u64) -> Result<Window, &'static str> {
-    if b.len() != PAYLOAD || &b[..4] != b"GAW1" || b[36..40] != [0; 4] {
+    let channels = d.inputs.len();
+    if !(4..=MAX_SOURCES).contains(&channels) {
+        return Err("source budget");
+    }
+    let packet_bytes = 48 + channels * 144;
+    if b.len() != 40 + packet_bytes * 10 || &b[..4] != b"GAW1" || b[36..40] != [0; 4] {
         return Err("window_header");
     }
     let oldest_ms = u64be(&b[28..36]);
@@ -139,10 +173,11 @@ pub fn decode_window(d: &Descriptor, b: &[u8], now_ms: u64) -> Result<Window, &'
         oldest_ms,
         losses: u64be(&b[4..12]),
         pcm: [[0.; 4]; WINDOW],
+        all_pcm: [[0.; MAX_SOURCES]; WINDOW],
     };
-    for (n, p) in b[40..].chunks_exact(624).enumerate() {
+    for (n, p) in b[40..].chunks_exact(packet_bytes).enumerate() {
         if &p[..4] != b"GPA1"
-            || p[4..12] != [1, 1, 0, 4, 0, 48, 0, 0]
+            || p[4..12] != [1, 1, 0, channels as u8, 0, 48, 0, 0]
             || u32be(&p[12..16]) != 3
             || u64be(&p[16..24]) != counter::parse(&d.source_epoch)?
             || u32be(&p[36..40]) != 48000
@@ -167,7 +202,11 @@ pub fn decode_window(d: &Descriptor, b: &[u8], now_ms: u64) -> Result<Window, &'
         for (i, s) in p[48..].chunks_exact(3).enumerate() {
             let v =
                 ((i32::from(s[0]) << 24) | (i32::from(s[1]) << 16) | (i32::from(s[2]) << 8)) >> 8;
-            w.pcm[n * 48 + i / 4][i % 4] = v as f32 / 8388608.;
+            let value = v as f32 / 8388608.;
+            w.all_pcm[n * 48 + i / channels][i % channels] = value;
+            if i % channels < 4 {
+                w.pcm[n * 48 + i / channels][i % channels] = value;
+            }
         }
     }
     let offset = w
@@ -205,12 +244,13 @@ pub struct AnalysisState {
     oldest: Option<u64>,
     calibration: Option<Calibrator>,
     calibration_windows: u32,
-    calibration_seen: [bool; 4],
+    calibration_seen: [bool; MAX_SOURCES],
+    all_rms: Option<[f32; MAX_SOURCES]>,
     calibration_start: u64,
     analyzer: Option<Analyzer>,
     analyzed_frames: u32,
     snapshot: Option<Snapshot>,
-    music: Option<crate::musical::MusicalAnalyzer>,
+    music: Option<Box<crate::musical::SourceMusicalAnalyzer<MAX_SOURCES>>>,
     director: Director,
     pub proposal: Option<i32>,
     pub generation: u64,
@@ -229,7 +269,8 @@ impl Default for AnalysisState {
             oldest: None,
             calibration: None,
             calibration_windows: 0,
-            calibration_seen: [false; 4],
+            calibration_seen: [false; MAX_SOURCES],
+            all_rms: None,
             calibration_start: 0,
             analyzer: None,
             analyzed_frames: 0,
@@ -245,7 +286,19 @@ impl Default for AnalysisState {
 }
 impl AnalysisState {
     pub fn enable_music(&mut self) {
-        self.music = Some(crate::musical::MusicalAnalyzer::new());
+        let count = self.descriptor.as_ref().map_or(4, |d| d.inputs.len());
+        let weights = std::array::from_fn(|i| {
+            if i >= count || i == 0 {
+                0.0
+            } else if i == 1 {
+                0.35
+            } else {
+                1.0
+            }
+        });
+        self.music = Some(Box::new(
+            crate::musical::SourceMusicalAnalyzer::with_weights(weights).expect("bounded roles"),
+        ));
     }
     pub fn music_enabled(&self) -> bool {
         self.music.is_some()
@@ -253,6 +306,9 @@ impl AnalysisState {
     pub fn attach(&mut self, d: Descriptor) {
         self.invalidate("reattach");
         self.descriptor = Some(d);
+        if self.music.is_some() {
+            self.enable_music();
+        }
         self.admitted = true;
         self.last_now = None;
         self.state = "invalid";
@@ -268,6 +324,7 @@ impl AnalysisState {
         self.calibration = None;
         self.analyzer = None;
         self.snapshot = None;
+        self.all_rms = None;
         if let Some(music) = &mut self.music {
             music.reset();
         }
@@ -299,14 +356,16 @@ impl AnalysisState {
                 self.admitted = true;
                 self.calibration = Some(Calibrator::default());
                 self.calibration_windows = 0;
-                self.calibration_seen = [false; 4];
+                self.calibration_seen = [false; MAX_SOURCES];
                 self.calibration_start = now;
                 self.state = "calibrating";
             }
             "finish" => {
                 if self.state != "calibrating"
                     || self.calibration_windows < 50
-                    || !self.calibration_seen.iter().all(|v| *v)
+                    || !self.calibration_seen[..self.descriptor.as_ref().unwrap().inputs.len()]
+                        .iter()
+                        .all(|v| *v)
                     || now.saturating_sub(self.calibration_start) > 10000
                 {
                     return Err("calibration_not_ready");
@@ -362,16 +421,26 @@ impl AnalysisState {
             c.observe(&w.pcm);
             self.calibration_windows += 1;
             for (s, seen) in self.calibration_seen.iter_mut().enumerate() {
-                *seen |= w.pcm.iter().any(|f| f[s].abs() >= 0.0001);
+                *seen |= w.all_pcm.iter().any(|f| f[s].abs() >= 0.0001);
             }
         }
         if let Some(a) = &mut self.analyzer {
-            let snap = a.process(self.analyzed_frames, &w.pcm)?;
+            let mut snap = a.process(self.analyzed_frames, &w.pcm)?;
+            snap.reliable &= w
+                .all_pcm
+                .iter()
+                .filter(|f| f.iter().any(|s| s.abs() >= 0.999))
+                .take(3)
+                .count()
+                <= 2;
+            self.all_rms = Some(std::array::from_fn(|c| {
+                (w.all_pcm.iter().map(|f| f[c] * f[c]).sum::<f32>() / WINDOW as f32).sqrt()
+            }));
             self.analyzed_frames = self
                 .analyzed_frames
                 .checked_add(480)
                 .ok_or("analysis_frame_overflow")?;
-            let musical = self.music.as_mut().map(|m| m.process(&w.pcm, w.first));
+            let musical = self.music.as_mut().map(|m| m.process(&w.all_pcm, w.first));
             let decision = self.director.update(snap.at, snap.features(), false);
             self.proposal = decision.input_available.then_some(match decision.scene {
                 Scene::Calm => 250,
@@ -419,7 +488,7 @@ impl AnalysisState {
         }
     }
     pub fn status(&self, now: u64) -> Value {
-        let mut status = json!({"analysis_version":"lux.analysis.v1","calibration_generation":self.analyzer.as_ref().map(|_|self.generation.to_string()),"calibration_windows":self.calibration_windows,"source_epoch":self.descriptor.as_ref().map(|d|&d.source_epoch),"map_revision":self.descriptor.as_ref().map(|d|&d.map_revision),"calibration_revision":self.descriptor.as_ref().map(|d|&d.calibration_revision),"sources":self.descriptor.as_ref().map(|d|&d.sources),"state":self.state,"reason":self.reason,"source_identity":self.descriptor,"source_window_range":self.last_range.map(|(a,b)|json!({"first_frame":a.to_string(),"end_frame_exclusive":b.to_string()})),"source_age_ms":self.oldest.and_then(|t|now.checked_sub(t)),"losses":self.losses.to_string(),"confidence":if self.ready(){1000}else{0},"rms_millionths":self.snapshot.map(|s|s.rms.map(|v|(v*1000000.).round() as u32)),"energy_millionths":self.snapshot.map(|s|(s.energy*1000000.).round() as u32),"beat":null,"downbeat":null,"harmony":null,"proposal":self.proposal,"generation":self.generation.to_string()});
+        let mut status = json!({"analysis_version":"lux.analysis.v1","calibration_generation":self.analyzer.as_ref().map(|_|self.generation.to_string()),"calibration_windows":self.calibration_windows,"source_epoch":self.descriptor.as_ref().map(|d|&d.source_epoch),"map_revision":self.descriptor.as_ref().map(|d|&d.map_revision),"calibration_revision":self.descriptor.as_ref().map(|d|&d.calibration_revision),"sources":self.descriptor.as_ref().map(|d|&d.sources),"state":self.state,"reason":self.reason,"source_identity":self.descriptor,"source_window_range":self.last_range.map(|(a,b)|json!({"first_frame":a.to_string(),"end_frame_exclusive":b.to_string()})),"source_age_ms":self.oldest.and_then(|t|now.checked_sub(t)),"losses":self.losses.to_string(),"confidence":if self.ready(){1000}else{0},"rms_millionths":self.all_rms.map(|r|r[..self.descriptor.as_ref().map_or(4, |d| d.inputs.len())].iter().map(|v|(v*1000000.).round() as u32).collect::<Vec<_>>()),"energy_millionths":self.snapshot.map(|s|(s.energy*1000000.).round() as u32),"beat":null,"downbeat":null,"harmony":null,"proposal":self.proposal,"generation":self.generation.to_string()});
         if let Some(music) = &self.music {
             status["analysis_version"] = json!("lux.analysis.v2");
             status["musical"] = musical_status(music.snapshot(), self.state);
@@ -490,11 +559,13 @@ fn musical_status(m: crate::musical::MusicalSnapshot, source_state: &str) -> Val
     json!({
         "state":state,
         "source_frame":tracking.then(||m.source_frame.to_string()),
+        "expression":tracking.then(|| { let mut e = serde_json::to_value(m.expression).expect("expression"); e["source_frame"] = json!(m.expression.source_frame.to_string()); e }),
+        "prediction":m.prediction.filter(|_| tracking).map(|c|json!({"root":c.root,"quality":mode(c.quality),"confidence":unit(c.confidence)})),
         "chroma":if tracking {m.chroma.map(unit)} else {[0;12]},
         "chord":m.chord.filter(|_|tracking).map(|c|json!({"root":c.root,"quality":mode(c.quality),"confidence":unit(c.confidence)})),
         "key":m.key.filter(|_|tracking).map(|k|json!({"tonic":k.tonic,"mode":mode(k.mode),"camelot_number":k.camelot_number,"camelot_letter":k.camelot_letter.to_string(),"confidence":unit(k.confidence)})),
         "movement":m.movement.filter(|_|tracking).map(|v|json!({"fifths_steps":v.fifths_steps,"kind":match v.kind {MovementKind::Stationary=>"stationary",MovementKind::FifthsForward=>"fifths_forward",MovementKind::FifthsBackward=>"fifths_backward",MovementKind::Other=>"other"},"tension":unit(v.tension),"resolution":unit(v.resolution)})),
-        "section":m.section.filter(|_|tracking).map(|v|json!({"id":v.id,"novelty":unit(v.novelty),"recurrence":unit(v.recurrence),"label":match v.label {SectionLabel::Unknown=>"unknown",SectionLabel::VerseCandidate=>"verse_candidate",SectionLabel::ChorusCandidate=>"chorus_candidate"},"confidence":unit(v.confidence)}))
+        "section":m.section.filter(|_|tracking).map(|v|json!({"id":v.id,"novelty":unit(v.novelty),"recurrence":unit(v.recurrence),"label":match v.label {SectionLabel::Unknown=>"unknown",SectionLabel::VerseCandidate=>"verse_candidate",SectionLabel::ChorusCandidate=>"chorus_candidate",SectionLabel::BridgeCandidate=>"bridge_candidate"},"confidence":unit(v.confidence)}))
     })
 }
 struct Inbox {
@@ -544,7 +615,9 @@ impl Client {
                     crate::local_service::same_uid(&stream)?;
                     stream.set_read_timeout(Some(Duration::from_millis(100)))?;
                     stream.set_write_timeout(Some(Duration::from_millis(100)))?;
-                    let request: &[u8] = if binding.is_some() {
+                    let request: &[u8] = if binding.as_ref().is_some_and(|b| b.version == 3) {
+                        br#"{"subscription":"lux.aux.v3","version":3}"#
+                    } else if binding.is_some() {
                         br#"{"subscription":"lux.aux.v2","version":2}"#
                     } else {
                         br#"{"subscription":"lux.aux.v1","version":1}"#
@@ -565,7 +638,7 @@ impl Client {
                         q.disconnected = false;
                     }
                     while !worker_stop.load(Ordering::Acquire) && !reset.load(Ordering::Acquire) {
-                        let frame = client_frame(&mut stream, PAYLOAD)?;
+                        let frame = client_frame(&mut stream, MAX_PAYLOAD)?;
                         let mut q = queue.lock().map_err(|_| io::Error::other("poison"))?;
                         if q.windows.len() == 2 {
                             q.dropped = true;

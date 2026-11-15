@@ -165,3 +165,19 @@ source descriptor arriving during DSP invalidates the analyzed batch before AUTO
 can use it; pending transport events are handled in order on the next drain. This
 reduces transport lock contention; it does not establish the cause of any observed
 process reconnection or qualify realtime throughput.
+
+## Variable-feed binding
+
+C-ANALYSIS:3 adds configured 4–8-feed local attachments. Lux startup `analysis`
+uses `version:3` with matching ordered `inputs` and `sources`; seven sources can
+be `kick`, `bass`, `guitar-1`, `guitar-2`, `vocal`, `synth`, `backs`. Every feed
+must be observed during fresh calibration. The consumer checks exact names,
+input IDs, source epoch, revisions and channel-dependent packet/window lengths.
+The first four roles preserve the established director; extra feeds contribute
+to musical context and have individual RMS observations. ADC clipping on an
+extra feed also inhibits readiness. No legacy endpoint silently changes shape.
+
+See the [producer mapping and packet budget](../../../gigpies/docs/reference/CONFIGURED_ANALYSIS.md#seven-feed-configuration-c-analysis3)
+and [rich music contract](0034-musical-analysis.md#extended-musical-context-and-configured-feeds).
+The budget and synthetic software validation do not qualify physical capture or
+lighting. A selected source remains a named input, not an inferred isolated stem.

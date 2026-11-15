@@ -135,7 +135,7 @@ fn legacy_remains_unchanged_and_opt_in_requires_music() {
     assert!(s.enable_scene_director().is_err());
     s.enable_musical_analysis().unwrap();
     s.enable_scene_director().unwrap();
-    assert_eq!(s.inventory().unwrap()["wire_schema"], "lx06-scenes-v1");
+    assert_eq!(s.inventory().unwrap()["wire_schema"], "lx06-scenes-v3");
 }
 #[test]
 fn malformed_recovered_map_refuses_startup() {

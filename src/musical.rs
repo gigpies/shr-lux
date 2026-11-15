@@ -2,7 +2,10 @@
 //!
 //! Integer pitch classes and Camelot labels describe relationships; they do not
 //! replace spectral analysis or prove a song's key or verse/chorus semantics.
-use crate::{analysis::WINDOW, replay::AuxFrame};
+use crate::{
+    analysis::WINDOW,
+    expression::{Expression, ExpressionTracker},
+};
 use std::f32::consts::PI;
 
 const FFT: usize = 2048;
@@ -64,6 +67,7 @@ pub enum SectionLabel {
     Unknown,
     VerseCandidate,
     ChorusCandidate,
+    BridgeCandidate,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -88,6 +92,8 @@ pub struct MusicalSnapshot {
     pub key: Option<KeyEstimate>,
     pub movement: Option<HarmonicMovement>,
     pub section: Option<SectionEstimate>,
+    pub expression: Expression,
+    pub prediction: Option<ChordEstimate>,
 }
 impl Default for MusicalSnapshot {
     fn default() -> Self {
@@ -99,6 +105,8 @@ impl Default for MusicalSnapshot {
             key: None,
             movement: None,
             section: None,
+            expression: Expression::default(),
+            prediction: None,
         }
     }
 }
@@ -106,13 +114,21 @@ impl Default for MusicalSnapshot {
 /// No allocation, locking, I/O or trigonometry in `process`. Constructor builds
 /// the filter/window/twiddles once. This is an analysis worker, not a qualified
 /// realtime sound-card callback: Pi CPU/latency acceptance remains separate.
+pub type MusicalAnalyzer = SourceMusicalAnalyzer<4>;
+
+/// Configured analysis capacity is a worker resource bound, not a product input cap.
+pub const MAX_MUSIC_SOURCES: usize = 16;
+
 #[derive(Clone)]
-pub struct MusicalAnalyzer {
+pub struct SourceMusicalAnalyzer<const N: usize> {
+    weights: [f32; N],
+    expression: ExpressionTracker,
+    transitions: [[u16; 24]; 24],
     fir_coeff: [f32; TAPS],
-    fir: [[f32; TAPS]; 3],
+    fir: [[f32; TAPS]; N],
     fir_cursor: usize,
     decimator: usize,
-    ring: [[f32; FFT]; 3],
+    ring: [[f32; FFT]; N],
     cursor: usize,
     filled: usize,
     since_hop: usize,
@@ -134,18 +150,31 @@ pub struct MusicalAnalyzer {
     key_count: usize,
     key_roots: [u16; KEY_HISTORY],
     quiet_hops: u8,
-    section_tracker: SectionTracker,
+    section_tracker: SectionTracker<N>,
     section_chroma: [f32; 12],
-    section_levels: [f32; 3],
+    section_levels: [f32; N],
     section_count: usize,
 }
-impl Default for MusicalAnalyzer {
+impl Default for SourceMusicalAnalyzer<4> {
     fn default() -> Self {
         Self::new()
     }
 }
-impl MusicalAnalyzer {
+impl SourceMusicalAnalyzer<4> {
     pub fn new() -> Self {
+        Self::with_weights([0.0, 0.35, 1.0, 1.0]).expect("legacy roles")
+    }
+}
+impl<const N: usize> SourceMusicalAnalyzer<N> {
+    pub fn with_weights(weights: [f32; N]) -> Result<Self, &'static str> {
+        if N == 0
+            || N > MAX_MUSIC_SOURCES
+            || weights
+                .iter()
+                .any(|w| !w.is_finite() || !(0.0..=1.0).contains(w))
+        {
+            return Err("music source budget/weights");
+        }
         // 96-tap Hann-windowed sinc, 2.5 kHz cutoff before 8 kHz decimation.
         // Pitch analysis stops below 2.1 kHz; this leaves an anti-alias guard band.
         let mut fir_coeff = [0.0; TAPS];
@@ -175,12 +204,15 @@ impl MusicalAnalyzer {
                 u8::MAX
             }
         });
-        Self {
+        Ok(Self {
+            weights,
+            expression: ExpressionTracker::default(),
+            transitions: [[0; 24]; 24],
             fir_coeff,
-            fir: [[0.0; TAPS]; 3],
+            fir: [[0.0; TAPS]; N],
             fir_cursor: 0,
             decimator: 0,
-            ring: [[0.0; FFT]; 3],
+            ring: [[0.0; FFT]; N],
             cursor: 0,
             filled: 0,
             since_hop: 0,
@@ -204,13 +236,15 @@ impl MusicalAnalyzer {
             quiet_hops: 0,
             section_tracker: SectionTracker::default(),
             section_chroma: [0.0; 12],
-            section_levels: [0.0; 3],
+            section_levels: [0.0; N],
             section_count: 0,
-        }
+        })
     }
 
     /// Clear timeline-derived state while retaining precomputed coefficients.
     pub fn reset(&mut self) {
+        self.expression = ExpressionTracker::default();
+        self.transitions = [[0; 24]; 24];
         self.fir.fill([0.0; TAPS]);
         self.ring.fill([0.0; FFT]);
         self.fir_cursor = 0;
@@ -232,7 +266,7 @@ impl MusicalAnalyzer {
         self.quiet_hops = 0;
         self.section_tracker = SectionTracker::default();
         self.section_chroma = [0.0; 12];
-        self.section_levels = [0.0; 3];
+        self.section_levels = [0.0; N];
         self.section_count = 0;
     }
 
@@ -244,7 +278,7 @@ impl MusicalAnalyzer {
     /// position. A gap/backward jump resets before accepting the new timeline.
     /// Malformed PCM/block length/overflow or more than two ADC-clipped frames
     /// returns an unavailable reset snapshot and erases harmonic history.
-    pub fn process(&mut self, frames: &[AuxFrame], first_frame: u64) -> MusicalSnapshot {
+    pub fn process(&mut self, frames: &[[f32; N]], first_frame: u64) -> MusicalSnapshot {
         let Some(end) = first_frame.checked_add(WINDOW as u64) else {
             self.reset();
             return self.snapshot;
@@ -277,8 +311,9 @@ impl MusicalAnalyzer {
             self.reset();
         }
         self.expected_frame = Some(end);
+        self.snapshot.expression = self.expression.process(frames, end);
         for (offset, frame) in frames.iter().enumerate() {
-            for (channel, sample) in self.fir.iter_mut().zip(&frame[1..]) {
+            for (channel, sample) in self.fir.iter_mut().zip(frame) {
                 channel[self.fir_cursor] = *sample;
             }
             self.fir_cursor = (self.fir_cursor + 1) % TAPS;
@@ -287,7 +322,10 @@ impl MusicalAnalyzer {
                 continue;
             }
             self.decimator = 0;
-            for source in 0..3 {
+            for source in 0..N {
+                if self.weights[source] == 0.0 {
+                    continue;
+                }
                 let mut value = 0.0;
                 for tap in 0..TAPS {
                     value += self.fir_coeff[tap] * self.fir[source][(self.fir_cursor + tap) % TAPS];
@@ -337,7 +375,9 @@ impl MusicalAnalyzer {
 
     fn analyze(&mut self, end_frame: u64) {
         let mut chroma = [0.0; 12];
-        let mut levels = [0.0; 3];
+        let mut levels = [0.0; N];
+        let mut register_sum = 0.0;
+        let mut register_weight = 0.0;
         for (source, level) in levels.iter_mut().enumerate() {
             let mut energy = 0.0;
             for n in 0..FFT {
@@ -347,7 +387,7 @@ impl MusicalAnalyzer {
                 self.imag[n] = 0.0;
             }
             *level = (energy / FFT as f32).sqrt();
-            if *level < 0.001 {
+            if *level < 0.001 || self.weights[source] == 0.0 {
                 continue;
             }
             self.fft();
@@ -362,18 +402,34 @@ impl MusicalAnalyzer {
                 let power = self.real[bin] * self.real[bin] + self.imag[bin] * self.imag[bin];
                 pitches[note as usize] = pitches[note as usize].max(power);
             }
+            let pitch_sum: f32 = pitches.iter().sum();
+            if pitch_sum > 1e-8
+                && pitches.iter().copied().fold(0.0_f32, f32::max) >= pitch_sum * 0.12
+            {
+                register_sum += pitches
+                    .iter()
+                    .enumerate()
+                    .map(|(n, p)| n as f32 * p)
+                    .sum::<f32>()
+                    / pitch_sum
+                    * self.weights[source];
+                register_weight += self.weights[source];
+            }
             let mut source_chroma = [0.0; 12];
             for (note, power) in pitches.iter().enumerate() {
                 source_chroma[note % 12] += power;
             }
             let sum: f32 = source_chroma.iter().sum();
             if sum > 1e-8 {
-                let weight = if source == 0 { 0.35 } else { 1.0 };
+                let weight = self.weights[source];
                 for (combined, power) in chroma.iter_mut().zip(source_chroma) {
                     *combined += weight * power / sum;
                 }
             }
         }
+        self.snapshot.expression.register_direction = self
+            .expression
+            .register((register_weight > 0.0).then_some(register_sum / register_weight.max(1e-8)));
         normalize(&mut chroma);
         self.snapshot.source_frame = end_frame;
         self.snapshot.ready = true;
@@ -384,6 +440,7 @@ impl MusicalAnalyzer {
         }
         if chroma.iter().sum::<f32>() < 0.5 {
             self.quiet_hops = self.quiet_hops.saturating_add(1);
+            self.snapshot.prediction = None;
             self.snapshot.chord = None;
             self.snapshot.key = None;
             self.snapshot.movement = None;
@@ -393,7 +450,7 @@ impl MusicalAnalyzer {
             self.previous_chord = None;
             self.ambiguous_hops = 0;
             self.section_chroma = [0.0; 12];
-            self.section_levels = [0.0; 3];
+            self.section_levels = [0.0; N];
             self.section_count = 0;
             self.section_tracker.candidate = None;
             self.key_history[self.key_cursor] = chroma;
@@ -424,6 +481,9 @@ impl MusicalAnalyzer {
         if previous_key != self.snapshot.key.map(|key| (key.tonic, key.mode)) {
             self.snapshot.movement = None;
         }
+        if self.snapshot.chord.is_none() {
+            self.snapshot.prediction = None;
+        }
         if chord.is_none() {
             self.ambiguous_hops = self.ambiguous_hops.saturating_add(1);
             self.snapshot.movement = None;
@@ -439,10 +499,24 @@ impl MusicalAnalyzer {
             if let Some(previous) = self.previous_chord
                 && !same_chord(Some(previous), Some(chord))
             {
+                let row = &mut self.transitions[chord_index(previous)];
+                if row.iter().any(|n| *n >= 1024) {
+                    row.iter_mut().for_each(|n| *n /= 2);
+                }
+                row[chord_index(chord)] = row[chord_index(chord)].saturating_add(1);
                 self.snapshot.movement = Some(movement(previous, chord, self.snapshot.key));
                 self.movement_age = 0;
             }
             self.previous_chord = Some(chord);
+            let row = self.transitions[chord_index(chord)];
+            let total: u32 = row.iter().map(|n| u32::from(*n)).sum();
+            let (index, count) = row.iter().enumerate().max_by_key(|(_, n)| **n).unwrap();
+            self.snapshot.prediction = (total >= 3 && u32::from(*count) * 4 >= total * 3)
+                .then_some(ChordEstimate {
+                    root: (index % 12) as u8,
+                    quality: if index < 12 { Mode::Major } else { Mode::Minor },
+                    confidence: *count as f32 / total.max(1) as f32,
+                });
         }
         for (sum, value) in self.section_chroma.iter_mut().zip(chroma) {
             *sum += value;
@@ -455,19 +529,20 @@ impl MusicalAnalyzer {
             let descriptor = Descriptor::new(self.section_chroma, self.section_levels);
             self.snapshot.section = Some(self.section_tracker.observe(descriptor));
             self.section_chroma = [0.0; 12];
-            self.section_levels = [0.0; 3];
+            self.section_levels = [0.0; N];
             self.section_count = 0;
         }
     }
 
     fn clear_context(&mut self) {
+        self.transitions = [[0; 24]; 24];
         self.key_history.fill([0.0; 12]);
         self.key_count = 0;
         self.key_cursor = 0;
         self.key_roots.fill(0);
         self.section_tracker = SectionTracker::default();
         self.section_chroma = [0.0; 12];
-        self.section_levels = [0.0; 3];
+        self.section_levels = [0.0; N];
         self.section_count = 0;
     }
 
@@ -653,20 +728,29 @@ fn movement(
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct Descriptor {
+#[derive(Clone, Copy, Debug)]
+struct Descriptor<const N: usize> {
     chroma: [f32; 12],
-    balance: [f32; 3],
+    balance: [f32; N],
     energy: f32,
 }
-impl Descriptor {
-    fn new(mut chroma: [f32; 12], levels: [f32; 3]) -> Self {
+impl<const N: usize> Default for Descriptor<N> {
+    fn default() -> Self {
+        Self {
+            chroma: [0.0; 12],
+            balance: [0.0; N],
+            energy: 0.0,
+        }
+    }
+}
+impl<const N: usize> Descriptor<N> {
+    fn new(mut chroma: [f32; 12], levels: [f32; N]) -> Self {
         normalize(&mut chroma);
         let sum: f32 = levels.iter().sum();
         Self {
             chroma,
             balance: levels.map(|x| if sum > 1e-6 { x / sum } else { 0.0 }),
-            energy: sum / (SECTION_HOPS * 3) as f32,
+            energy: sum / (SECTION_HOPS * N) as f32,
         }
     }
     fn distance(self, other: Self) -> f32 {
@@ -690,22 +774,22 @@ impl Descriptor {
     }
 }
 #[derive(Clone, Copy, Debug, Default)]
-struct SectionMemory {
-    descriptor: Descriptor,
+struct SectionMemory<const N: usize> {
+    descriptor: Descriptor<N>,
     id: u32,
     visits: u16,
 }
 #[derive(Clone, Debug)]
-struct SectionTracker {
-    memory: [SectionMemory; SECTION_MEMORY],
+struct SectionTracker<const N: usize> {
+    memory: [SectionMemory<N>; SECTION_MEMORY],
     used: usize,
     replace: usize,
     current: usize,
     next_id: u32,
     dwell: u16,
-    candidate: Option<Descriptor>,
+    candidate: Option<Descriptor<N>>,
 }
-impl Default for SectionTracker {
+impl<const N: usize> Default for SectionTracker<N> {
     fn default() -> Self {
         Self {
             memory: [SectionMemory::default(); SECTION_MEMORY],
@@ -718,8 +802,8 @@ impl Default for SectionTracker {
         }
     }
 }
-impl SectionTracker {
-    fn observe(&mut self, descriptor: Descriptor) -> SectionEstimate {
+impl<const N: usize> SectionTracker<N> {
+    fn observe(&mut self, descriptor: Descriptor<N>) -> SectionEstimate {
         let mut recurrence = 0.0;
         let mut novelty = 0.0;
         if self.used == 0 {
@@ -790,6 +874,17 @@ impl SectionTracker {
                 }
             }
         }
+        if current.visits == 1
+            && self.dwell >= 2
+            && self.memory[..self.used]
+                .iter()
+                .filter(|m| m.id != current.id && m.visits >= 2)
+                .count()
+                >= 2
+        {
+            label = SectionLabel::BridgeCandidate;
+            confidence = 0.35;
+        }
         SectionEstimate {
             id: current.id,
             novelty,
@@ -798,7 +893,7 @@ impl SectionTracker {
             confidence,
         }
     }
-    fn add(&mut self, descriptor: Descriptor) {
+    fn add(&mut self, descriptor: Descriptor<N>) {
         let index = if self.used < SECTION_MEMORY {
             let i = self.used;
             self.used += 1;
@@ -816,4 +911,8 @@ impl SectionTracker {
         self.next_id = self.next_id.saturating_add(1);
         self.current = index;
     }
+}
+
+fn chord_index(chord: ChordEstimate) -> usize {
+    chord.root as usize + if chord.quality == Mode::Minor { 12 } else { 0 }
 }

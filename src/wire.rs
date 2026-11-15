@@ -441,16 +441,22 @@ impl Service {
     fn analysis_schema(&self) -> &'static str {
         if self.scenes.is_some() {
             if self.analysis_binding.is_some() {
-                "lx06-scenes-v2"
+                "lx06-scenes-v4"
             } else {
-                "lx06-scenes-v1"
+                "lx06-scenes-v3"
             }
         } else if self.analysis.as_ref().is_some_and(|a| a.music_enabled()) {
             if self.analysis_binding.is_some() {
-                "lx05-music-v2"
+                "lx05-music-v4"
             } else {
-                "lx05-music-v1"
+                "lx05-music-v3"
             }
+        } else if self
+            .analysis_binding
+            .as_ref()
+            .is_some_and(|b| b.version == 3)
+        {
+            "lx05-v3"
         } else if self.analysis_binding.is_some() {
             "lx05-v2"
         } else {
@@ -1322,7 +1328,14 @@ pub fn validate_configured_analysis(inventory: &Json) -> Result<(), &'static str
     use crate::analysis_subscription::{Binding, Descriptor};
     if !matches!(
         inventory["wire_schema"].as_str(),
-        Some("lx05-v2" | "lx05-music-v2" | "lx06-scenes-v2")
+        Some(
+            "lx05-v2"
+                | "lx05-v3"
+                | "lx05-music-v2"
+                | "lx05-music-v4"
+                | "lx06-scenes-v2"
+                | "lx06-scenes-v4"
+        )
     ) {
         return Err("configured wire schema");
     }
@@ -1332,6 +1345,8 @@ pub fn validate_configured_analysis(inventory: &Json) -> Result<(), &'static str
     let status = &inventory["analysis"];
     let version = if inventory["wire_schema"] == "lx05-music-v2"
         || inventory["wire_schema"] == "lx06-scenes-v2"
+        || inventory["wire_schema"] == "lx05-music-v4"
+        || inventory["wire_schema"] == "lx06-scenes-v4"
     {
         "lux.analysis.v2"
     } else {
@@ -1463,7 +1478,10 @@ impl PageAssembler {
         snapshot
             .validate_for_schema(&patch, value["wire_schema"].as_str().unwrap_or("lx03-v1"))
             .map_err(error_reason)?;
-        if value["wire_schema"] == "lx05-v2" || value["wire_schema"] == "lx05-music-v2" {
+        if value["wire_schema"] == "lx05-v2"
+            || value["wire_schema"] == "lx05-v3"
+            || value["wire_schema"] == "lx05-music-v4"
+        {
             validate_configured_analysis(&value)?;
         }
         self.key = None;
@@ -1655,14 +1673,22 @@ mod analysis_clock_tests {
         let c: Json =
             serde_json::from_str(include_str!("../tests/fixtures/lx05/v1/e09.json")).unwrap();
         let d = if let Some(binding) = &binding {
-            Descriptor::decode_configured(
-                include_bytes!("../tests/fixtures/lx05/v2/configured-descriptor.json"),
-                binding,
-            )
-            .unwrap()
+            let mut descriptor: Json = serde_json::from_slice(include_bytes!(
+                "../tests/fixtures/lx05/v2/configured-descriptor.json"
+            ))
+            .unwrap();
+            if binding.version == 3 {
+                descriptor["version"] = json!(3);
+                descriptor["subscription"] = json!("lux.aux.v3");
+                descriptor["inputs"] = json!(binding.inputs);
+                descriptor["sources"] = json!(binding.sources);
+            }
+            Descriptor::decode_configured(&serde_json::to_vec(&descriptor).unwrap(), binding)
+                .unwrap()
         } else {
             Descriptor::decode(&serde_json::to_vec(&c["descriptor"]).unwrap()).unwrap()
         };
+        let channel_count = d.inputs.len();
         let origin = counter::parse(&d.first_frame).unwrap();
         let calibration = counter::parse(&d.calibration_revision).unwrap();
         let a = s.analysis.as_mut().unwrap();
@@ -1682,6 +1708,17 @@ mod analysis_clock_tests {
                     .collect();
                 p[24..32].copy_from_slice(&(origin + n * 480 + i as u64 * 48).to_be_bytes());
                 p[32..36].copy_from_slice(&(n as u32 * 10 + i as u32).to_be_bytes());
+                if channel_count > 4 {
+                    let legacy = p.clone();
+                    p.truncate(48);
+                    p[6..8].copy_from_slice(&(channel_count as u16).to_be_bytes());
+                    for frame in 0..48 {
+                        p.extend_from_slice(&legacy[48 + frame * 12..48 + (frame + 1) * 12]);
+                        for _ in 4..channel_count {
+                            p.extend_from_slice(&legacy[48 + frame * 12 + 6..48 + frame * 12 + 9]);
+                        }
+                    }
+                }
                 b.extend(p);
             }
             a.ingest(&b, now).unwrap();
@@ -1693,7 +1730,7 @@ mod analysis_clock_tests {
             }
         }
         assert!(a.ready());
-        assert_eq!(a.descriptor.as_ref().unwrap().version == 2, configured);
+        assert_eq!(a.descriptor.as_ref().unwrap().version >= 2, configured);
         let generation = a.generation;
         let writer = Id::new("clock-test").unwrap();
         s.sessions.insert(
@@ -1959,8 +1996,11 @@ mod analysis_clock_tests {
         for binding in [
             None,
             Some(crate::analysis_subscription::Binding {
+                sources: vec![],
                 version: 2,
-                inputs: ["input-17", "input-03", "input-09", "input-01"].map(String::from),
+                inputs: ["input-17", "input-03", "input-09", "input-01"]
+                    .map(String::from)
+                    .to_vec(),
             }),
         ] {
             let configured = binding.is_some();
@@ -2091,8 +2131,20 @@ mod analysis_clock_tests {
         for binding in [
             None,
             Some(crate::analysis_subscription::Binding {
+                sources: vec![],
                 version: 2,
-                inputs: ["input-17", "input-03", "input-09", "input-01"].map(String::from),
+                inputs: ["input-17", "input-03", "input-09", "input-01"]
+                    .map(String::from)
+                    .to_vec(),
+            }),
+            Some(crate::analysis_subscription::Binding {
+                version: 3,
+                inputs: (1..=7).map(|n| format!("input-{n:02}")).collect(),
+                sources: [
+                    "kick", "bass", "guitar-1", "guitar-2", "vocal", "synth", "backs",
+                ]
+                .map(String::from)
+                .to_vec(),
             }),
         ] {
             let configured = binding.is_some();
@@ -2104,9 +2156,9 @@ mod analysis_clock_tests {
             assert_eq!(
                 active["wire_schema"],
                 if configured {
-                    "lx05-music-v2"
+                    "lx05-music-v4"
                 } else {
-                    "lx05-music-v1"
+                    "lx05-music-v3"
                 }
             );
             assert_eq!(active["analysis"]["analysis_version"], "lux.analysis.v2");
@@ -2173,6 +2225,24 @@ mod analysis_clock_tests {
             assert!(stale["analysis"]["musical"]["source_frame"].is_null());
             assert!(stale["analysis"]["musical"]["key"].is_null());
             assert_eq!(stale["analysis"]["musical"]["chroma"], json!(vec![0; 12]));
+            if active["analysis_binding"]["version"] == 3 {
+                assert_eq!(
+                    active["analysis"]["rms_millionths"]
+                        .as_array()
+                        .unwrap()
+                        .len(),
+                    7
+                );
+                if let Ok(path) = std::env::var("LUX_SEVEN_FEED_CORPUS") {
+                    std::fs::write(
+                        path,
+                        serde_json::to_string_pretty(&json!({"active":active,"stale":stale}))
+                            .unwrap()
+                            + "\n",
+                    )
+                    .unwrap();
+                }
+            }
             if std::env::var_os("LUX_GENERATE_MUSICAL_CORPUS").is_some() {
                 let name = if configured {
                     "configured"
@@ -2386,8 +2456,11 @@ mod analysis_clock_tests {
     #[test]
     fn configured_owner_corpus_active_absent_retained_and_manual() {
         let binding = crate::analysis_subscription::Binding {
+            sources: vec![],
             version: 2,
-            inputs: ["input-17", "input-03", "input-09", "input-01"].map(String::from),
+            inputs: ["input-17", "input-03", "input-09", "input-01"]
+                .map(String::from)
+                .to_vec(),
         };
         let mut s = ready_service_binding(Some(binding.clone()));
         s.poll_analysis_clock(None, 1000, 1, || Ok(1000)).unwrap();

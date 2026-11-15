@@ -163,3 +163,10 @@ A documentation reconciliation does not rerun tests or qualify hardware.
 ## Shared scene integration
 
 [GP-SCENES](../../../gigpies/docs/archive/records/2026-10-11-gp-scenes.md) is the archived shared acceptance card for Lux director and Lightdesk editor work. Owner behavior and protocol are documented in [0035](0035-scene-map.md); task state, acceptance and next action stay in GigPies.
+
+## Extended musical context
+
+[GP-MUSIC-2](../../../gigpies/docs/development/MODULE_IMPLEMENTATION_PLAN.md#gp-music-2--seven-feed-musical-context-for-lightdesk)
+owns the seven-feed subscription and richer musical-context integration. Lux owns
+bounded analysis and versioned observations; [0034](0034-musical-analysis.md#extended-musical-context-and-configured-feeds)
+documents algorithms, uncertainty and the reproducible offline cost check.

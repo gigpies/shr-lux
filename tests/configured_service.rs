@@ -19,8 +19,11 @@ use std::{
 };
 fn binding() -> Binding {
     Binding {
+        sources: vec![],
         version: 2,
-        inputs: ["input-17", "input-03", "input-09", "input-01"].map(String::from),
+        inputs: ["input-17", "input-03", "input-09", "input-01"]
+            .map(String::from)
+            .to_vec(),
     }
 }
 fn config() -> ServiceConfig {
